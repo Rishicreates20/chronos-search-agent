@@ -45,6 +45,12 @@ cp .env.example .env        # then add the two keys
 
 Every message shows its timestamp as `[HH:MM:SS UTC]` (hover for local time). Each answer shows server-measured `TTFT` and `total`, and a `web` badge when a search ran.
 
+## Deploying to Vercel
+
+The repo deploys to Vercel as-is: `app/main.py` is detected as the FastAPI entrypoint and `vercel.json` raises the function timeout to 60 s. Set `LLM_API_KEY` and `TAVILY_API_KEY` as project environment variables.
+
+On Vercel the database lives in `/tmp`, which is temporary and separate for each function instance. Memory therefore lasts only as long as an instance stays warm, and it is lost on every redeploy. Run it locally for durable memory, or see the note in [design.md](design.md#5-trade-offs-and-future-work).
+
 ## Tests
 
 ```bash

@@ -39,6 +39,14 @@ def load_dotenv(path: Path) -> None:
         os.environ.setdefault(key.strip(), value)
 
 
+def _default_db_path() -> str:
+    # Serverless hosts (Vercel) only allow writes under /tmp, and that
+    # directory is per-instance and temporary. See design.md, section 5.
+    if os.environ.get("VERCEL"):
+        return "/tmp/chronos.db"
+    return str(ROOT / "data" / "chronos.db")
+
+
 @dataclass(frozen=True)
 class Settings:
     llm_api_key: str
@@ -66,7 +74,7 @@ class Settings:
             llm_reasoning_effort=env("LLM_REASONING_EFFORT", preset["reasoning_effort"]),
             tavily_api_key=env("TAVILY_API_KEY", "").strip(),
             tavily_base_url=env("TAVILY_BASE_URL", "https://api.tavily.com").rstrip("/"),
-            db_path=env("DB_PATH", str(ROOT / "data" / "chronos.db")),
+            db_path=env("DB_PATH") or _default_db_path(),
             history_turns=int(env("HISTORY_TURNS", "10")),
             search_timeout_s=float(env("SEARCH_TIMEOUT_S", "3")),
             search_max_results=int(env("SEARCH_MAX_RESULTS", "5")),
