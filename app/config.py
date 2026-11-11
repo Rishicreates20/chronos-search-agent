@@ -60,6 +60,9 @@ class Settings:
     search_timeout_s: float
     search_max_results: int
     max_search_rounds: int
+    supabase_url: str = ""
+    supabase_key: str = ""
+    memory_token: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -79,4 +82,7 @@ class Settings:
             search_timeout_s=float(env("SEARCH_TIMEOUT_S", "3")),
             search_max_results=int(env("SEARCH_MAX_RESULTS", "5")),
             max_search_rounds=int(env("MAX_SEARCH_ROUNDS", "2")),
+            supabase_url=env("SUPABASE_URL", "").strip(),
+            supabase_key=env("SUPABASE_KEY", "").strip(),
+            memory_token=env("MEMORY_TOKEN", "").strip(),
         )

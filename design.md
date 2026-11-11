@@ -22,7 +22,7 @@ One request is one pass through this pipeline:
 | Stage | Where | What happens |
 | --- | --- | --- |
 | 1. Ingress | `main.py`, `agent.py` | The UTC timestamp is taken at receipt and the user message is written immediately. |
-| 2. Hydration | `temporal.py`, `memory.py` | The last 10 turns are loaded, each prefixed with its time. If the message contains a recall cue, time-range and keyword lookups run and their results are added to the system prompt. |
+| 2. Hydration | `temporal.py`, `memory.py` | In one store call the last 10 turns are loaded, each prefixed with its time. If the message contains a recall cue, time-range and keyword lookups run and their results are added to the system prompt. |
 | 3. Routing | `agent.py`, `llm.py` | A single streaming LLM call. The model either starts answering or emits a `web_search` call. There is no separate router call. |
 | 4. Search | `search.py` | The search runs with a 3 s timeout while the UI shows "Searching web…". |
 | 5. Grounded answer | `agent.py`, `grounding.py` | A second streaming call answers from the results. Every token passes through the citation guard before it is sent. |
@@ -38,7 +38,7 @@ Targets from the brief: first token under 800 ms without search, under 1.8 s wit
 
 - **One round trip when no search is needed.** Routing is the first tokens of the answer call. A classifier or planner call in front would add a full round trip to every message.
 - **Fast model, thinking off.** Gemini 2.5 Flash with `reasoning_effort: none`. Flash reasons before answering by default, which delays the first token.
-- **Nothing blocks before the model call.** Hydration is a few indexed SQLite reads, measured in the low milliseconds, and recall parsing is regular expressions.
+- **Nothing blocks before the model call.** Hydration is a few indexed SQLite reads, measured in the low milliseconds, and recall parsing is regular expressions. With the hosted store it is one HTTP call to a database in the same region as the function; that call's latency is not yet measured.
 - **Connection reuse.** One pooled `httpx.AsyncClient` serves both the LLM and the search API, and the connections are opened at startup so the first question does not pay for TLS handshakes.
 - **Searches run concurrently.** If the model asks for several searches in one step they run in parallel, with at most two search rounds per turn; on the last round the model must answer.
 - **Streaming end to end.** Tokens are forwarded as they arrive. The citation guard holds text back only while it is inside a possible link, so ordinary prose is not delayed.
@@ -90,6 +90,14 @@ The results go into the system prompt as a `MEMORY RECALL` section. An empty ran
 
 Range and keyword recall span all sessions, because the app is single-user and "yesterday" usually means a different session. The sliding window and session log are per session.
 
+**Durable memory on serverless hosts.** A Vercel function has no persistent disk: the only writable path is `/tmp`, which is per-instance and temporary. So the store has a second backend, `SupabaseStore`, selected by three environment variables. It keeps the same model in Postgres (`supabase/schema.sql`): one immutable row per message, a `timestamptz` index for ranges, and a generated `tsvector` column with a GIN index for keywords, using the English stemmer in place of Porter.
+
+- *One round trip per lookup.* A network database charges latency per query, so the per-turn reads are folded into a single function, `chronos_begin_turn`, which stores the question and returns the sliding window, the range rows, the keyword hits and the session log together. A turn makes two database calls: that one, and one to save the answer.
+- *Access.* The tables sit in a schema the REST API does not expose. The app reaches them only through three functions, and each requires a memory token whose hash is stored in the database. The Supabase key on its own grants nothing.
+- *Failure.* If the database is unreachable the turn ends with a readable error instead of answering without memory.
+
+Both backends implement the same three async methods, and the recall logic above them is shared, so local and hosted behaviour differ only in where rows live. Ranking differs slightly: BM25 in SQLite, `ts_rank` in Postgres.
+
 ## 5. Trade-offs and future work
 
 - **FTS5, not embeddings.** Keyword recall is exact, fast and needs no second model. It misses paraphrases: "when did I ask about crypto?" will not match a question that only said "bitcoin". A vector index would fix that at the cost of an embedding call per message.
@@ -97,7 +105,6 @@ Range and keyword recall span all sessions, because the app is single-user and "
 - **Snippets only.** The model reads search snippets, not full pages. That keeps search inside its latency budget but limits depth on questions that need a whole article.
 - **Single user, no auth.** Sessions are an id in browser storage, and cross-session recall would be a privacy bug in a multi-tenant deployment. Adding users means scoping every query by a user id.
 - **No caching.** Identical searches are repeated. A short-lived cache would help repeat questions.
-- **One process.** SQLite with one connection suits a single server. Several workers would each open the file, which WAL supports, but a shared deployment would move to Postgres.
-- **Serverless hosting weakens memory.** On Vercel the only writable path is `/tmp`, which is per-instance and temporary, so the SQLite file does not survive a cold start or a redeploy, and two concurrent instances would each have their own copy. A hosted deployment that needs durable recall should point the store at a networked database; a libSQL service such as Turso would keep the SQLite and FTS5 design unchanged.
+- **One process locally.** SQLite with one connection suits a single server. Anything with several instances should use the Postgres backend.
 - **Citation checking stops at the URL.** Verifying that each cited page supports its sentence would need a second pass over the answer.
 - **Not verified against the live providers.** The request and response handling for Gemini's compatibility endpoint and for Tavily was written from the published API formats and tested against scripted responses, not real ones. Two places are defensive because of this: tool calls are assembled whether the provider streams them in fragments or whole, and if the provider rejects the `reasoning_effort` parameter the request is retried without it.

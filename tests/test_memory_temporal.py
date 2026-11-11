@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -100,21 +101,32 @@ def test_tag_has_exact_local_time_and_age():
     assert t == "[2026-11-11 21:01:02 IST · 5 min ago]"
 
 
-def test_recall_block_range_keyword_and_log(store):
-    cur = seed(store)
-    r = temporal.analyze("what did I ask 5 minutes ago?", NOW, UTC)
-    block = temporal.build_recall_block(store, r, "s1", NOW, UTC, cur.id)
-    assert "[2026-11-11 15:31:02 UTC · 5 min ago] USER: What is the price of bitcoin?" in block
-    assert "current question" not in block
+def recall_block(store, text, session="s1"):
+    """What the agent does for one turn: analyze, one store call, render."""
+    r = temporal.analyze(text, NOW, UTC)
+    ctx = asyncio.run(
+        store.begin_turn(session, text, NOW, 20, start=r.start, end=r.end, terms=r.keywords, log_limit=40)
+    )
+    return temporal.build_recall_block(r, ctx, NOW, UTC)
 
-    r = temporal.analyze("when did I ask about the world cup?", NOW, UTC)
-    block = temporal.build_recall_block(store, r, "other-session", NOW, UTC, cur.id)
+
+def seed_past(store):
+    seed(store)
+    store._db.execute("DELETE FROM messages WHERE content='current question'")
+
+
+def test_recall_block_range_keyword_and_log(store):
+    seed_past(store)
+    block = recall_block(store, "what did I ask 5 minutes ago?")
+    assert "[2026-11-11 15:31:02 UTC · 5 min ago] USER: What is the price of bitcoin?" in block
+    assert "what did I ask 5 minutes ago?" not in block  # the current message is never recalled
+
+    block = recall_block(store, "when did I ask about the world cup?", session="other-session")
     assert "[2026-11-10 13:36:02 UTC · 1d 2h ago] USER: Who won the 2022 World Cup?" in block
     assert "no earlier user questions" in block
 
 
 def test_recall_block_states_empty_range(store):
-    cur = seed(store)
-    r = temporal.analyze("what did we discuss last week?", NOW, UTC)
-    block = temporal.build_recall_block(store, r, "s1", NOW, UTC, cur.id)
+    seed_past(store)
+    block = recall_block(store, "what did we discuss last week?")
     assert "Nothing was recorded in this range." in block

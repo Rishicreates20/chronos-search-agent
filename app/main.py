@@ -8,13 +8,13 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import run_turn
 from .config import Settings
-from .memory import MemoryStore, to_iso, utcnow
+from .memory import StoreError, open_store, to_iso, utcnow
 
 STATIC = Path(__file__).parent / "static"
 
@@ -32,7 +32,10 @@ def sse(event: dict) -> bytes:
 async def _prewarm(client: httpx.AsyncClient, settings: Settings) -> None:
     """Open TLS connections at startup so the first question does not pay
     for the handshakes. Best effort."""
-    for url in (f"{settings.llm_base_url}/models", settings.tavily_base_url):
+    urls = [f"{settings.llm_base_url}/models", settings.tavily_base_url]
+    if settings.supabase_url:
+        urls.append(settings.supabase_url)
+    for url in urls:
         try:
             await client.get(url, timeout=3)
         except Exception:
@@ -45,17 +48,18 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = settings
-        app.state.store = MemoryStore(settings.db_path)
-        # One pooled keep-alive client for both the LLM and the search API.
+        # One pooled keep-alive client for the LLM, the search API and
+        # (when configured) the hosted memory store.
         app.state.client = httpx.AsyncClient(
             transport=transport, limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=120)
         )
+        app.state.store = open_store(settings, app.state.client)
         warm = asyncio.create_task(_prewarm(app.state.client, settings)) if transport is None else None
         yield
         if warm:
             warm.cancel()
+        await app.state.store.aclose()
         await app.state.client.aclose()
-        app.state.store.close()
 
     app = FastAPI(title="Chronos", lifespan=lifespan, docs_url=None, redoc_url=None)
 
@@ -75,7 +79,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
 
     @app.get("/api/history")
     async def history(session_id: str = Query(min_length=1, max_length=64)):
-        return {"messages": [m.public() for m in app.state.store.history(session_id)]}
+        try:
+            return {"messages": [m.public() for m in await app.state.store.load_history(session_id)]}
+        except StoreError as exc:
+            return JSONResponse({"messages": [], "error": str(exc)}, status_code=503)
 
     @app.get("/api/health")
     async def health():
@@ -85,6 +92,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             "model": settings.llm_model,
             "llm_key": bool(settings.llm_api_key),
             "search_key": bool(settings.tavily_api_key),
+            "memory": app.state.store.kind,
         }
 
     @app.get("/")

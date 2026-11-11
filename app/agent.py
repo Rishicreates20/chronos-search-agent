@@ -22,7 +22,7 @@ from . import temporal
 from .config import Settings
 from .grounding import CitationGuard, extract_urls
 from .llm import LLMError, stream_chat
-from .memory import MemoryStore, to_iso, utcnow
+from .memory import StoreError, TurnContext, to_iso, utcnow
 from .search import TOOL_SPEC, SearchOutcome, web_search
 
 # The only tools the model can ever see (FR-01).
@@ -58,27 +58,22 @@ MEMORY AND TIME
 STYLE: lead with the answer. Be concise and direct. Use markdown."""
 
 
-def build_messages(
-    store: MemoryStore, settings: Settings, session_id: str, user_text: str,
-    user_msg_id: int, now, tz, tz_name: str,
-) -> tuple[list[dict], set[str]]:
+def build_messages(ctx: TurnContext, recall: temporal.Recall, user_text: str, now, tz) -> tuple[list[dict], set[str]]:
     """Memory hydration: system prompt + sliding window + recall block."""
     local = now.astimezone(tz)
     system = SYSTEM_PROMPT.format(
         local_now=f"{local:%Y-%m-%d %H:%M:%S} {temporal.tz_label(local)}",
         weekday=f"{local:%A}",
         utc_now=to_iso(now),
-        tz_name=tz_name,
+        tz_name=tz.key,
     )
-    recall = temporal.analyze(user_text, now, tz)
-    block = temporal.build_recall_block(store, recall, session_id, now, tz, exclude_id=user_msg_id)
+    block = temporal.build_recall_block(recall, ctx, now, tz)
     if block:
         system += "\n\n" + block
 
-    history = store.recent(session_id, settings.history_turns * 2, before_id=user_msg_id)
     messages = [{"role": "system", "content": system}]
     known_urls = extract_urls(block) | extract_urls(user_text)
-    for m in history:
+    for m in ctx.recent:
         body = m.content if len(m.content) <= 4000 else m.content[:4000] + "…"
         messages.append({"role": m.role, "content": f"{temporal.tag(m.dt, tz, now)} {body}"})
         known_urls |= extract_urls(m.content)
@@ -88,7 +83,7 @@ def build_messages(
 
 async def run_turn(
     client: httpx.AsyncClient,
-    store: MemoryStore,
+    store,
     settings: Settings,
     session_id: str,
     user_text: str,
@@ -101,14 +96,25 @@ async def run_turn(
     def ms() -> int:
         return int((time.perf_counter() - t0) * 1000)
 
-    # Stage 1: immutable timestamp, taken at receipt.
-    user_msg = store.add(session_id, "user", user_text, created_at=now)
+    # Stages 1-2: take the immutable timestamp at receipt, then store the
+    # question and load memory. Recall phrases are resolved to exact bounds
+    # in code first, so the store does one combined lookup.
+    recall = temporal.analyze(user_text, now, tz)
+    try:
+        ctx = await store.begin_turn(
+            session_id, user_text, now, settings.history_turns * 2,
+            start=recall.start, end=recall.end,
+            terms=recall.keywords if recall.is_recall else None,
+            log_limit=40 if recall.is_recall else 0,
+        )
+    except StoreError as exc:
+        yield {"type": "error", "message": str(exc)}
+        yield {"type": "done", "assistant_message_id": None, "created_at": to_iso(utcnow()), "ttft_ms": None,
+               "total_ms": ms(), "search_ms": 0, "hydrate_ms": ms(), "searched": False, "removed_urls": 0}
+        return
+    user_msg = ctx.user
     yield {"type": "meta", "user_message_id": user_msg.id, "created_at": user_msg.created_at}
-
-    # Stage 2: memory hydration.
-    messages, known_urls = build_messages(
-        store, settings, session_id, user_text, user_msg.id, now, tz, tz.key
-    )
+    messages, known_urls = build_messages(ctx, recall, user_text, now, tz)
     hydrate_ms = ms()
 
     guard = CitationGuard(known_urls)
@@ -218,7 +224,10 @@ async def run_turn(
                 "searched": bool(queries),
                 "removed_urls": len(guard.removed),
             }
-            stored = store.add(session_id, "assistant", text, meta=meta)
+            try:
+                stored = await store.save(session_id, "assistant", text, meta=meta)
+            except StoreError as exc:
+                error = error or f"The answer could not be saved to memory. {exc}"
 
     if error:
         yield {"type": "error", "message": error}

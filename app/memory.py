@@ -1,10 +1,15 @@
-"""Temporal memory: SQLite (WAL) + FTS5.
+"""Temporal memory.
 
 Every message is stored once with an immutable ISO-8601 UTC timestamp.
 Three access paths cover recall:
-  * recent()      - sliding window of the current session
-  * in_range()    - exact time-range lookup ("yesterday", "5 minutes ago")
-  * search()      - FTS5 keyword lookup ("when did I ask about X?")
+  * recent     - sliding window of the current session
+  * time range - exact lookup ("yesterday", "5 minutes ago")
+  * keywords   - full-text lookup ("when did I ask about X?")
+
+Two interchangeable backends implement the same three async methods
+(begin_turn, save, load_history):
+  * MemoryStore   - a local SQLite file (WAL + FTS5). The default.
+  * SupabaseStore - hosted Postgres, for serverless hosts with no durable disk.
 """
 from __future__ import annotations
 
@@ -12,6 +17,8 @@ import json
 import re
 import sqlite3
 import threading
+
+import httpx
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,6 +91,22 @@ class Message:
         }
 
 
+@dataclass
+class TurnContext:
+    """Everything one turn needs from memory, fetched in one go."""
+
+    user: Message                                   # the message just stored
+    recent: list[Message] = field(default_factory=list)
+    range_rows: list[Message] = field(default_factory=list)
+    range_total: int = 0
+    hits: list[Message] = field(default_factory=list)
+    log: list[Message] = field(default_factory=list)
+
+
+class StoreError(Exception):
+    pass
+
+
 def _row(row: tuple) -> Message:
     return Message(row[0], row[1], row[2], row[3], row[4], json.loads(row[5]) if row[5] else {})
 
@@ -103,8 +126,36 @@ class MemoryStore:
         self._db.executescript(SCHEMA)
         self._db.commit()
 
+    kind = "sqlite"
+
     def close(self) -> None:
         self._db.close()
+
+    # -- async interface shared with SupabaseStore ---------------------------
+    async def begin_turn(
+        self, session_id: str, content: str, created_at: datetime, window: int,
+        start: datetime | None = None, end: datetime | None = None,
+        terms: list[str] | None = None, log_limit: int = 0,
+    ) -> TurnContext:
+        """Store the user's message and load the memory this turn needs."""
+        user = self.add(session_id, "user", content, created_at=created_at)
+        ctx = TurnContext(user=user, recent=self.recent(session_id, window, before_id=user.id))
+        if start and end:
+            ctx.range_rows, ctx.range_total = self.in_range(start, end, limit=40, exclude_id=user.id)
+        if terms:
+            ctx.hits = sorted(self.search(terms, limit=8, exclude_id=user.id), key=lambda m: m.id)
+        if log_limit:
+            ctx.log = self.session_log(session_id, limit=log_limit, exclude_id=user.id)
+        return ctx
+
+    async def save(self, session_id: str, role: str, content: str, meta: dict | None = None) -> Message:
+        return self.add(session_id, role, content, meta=meta)
+
+    async def load_history(self, session_id: str, limit: int = 500) -> list[Message]:
+        return self.recent(session_id, limit)
+
+    async def aclose(self) -> None:
+        self.close()
 
     def _all(self, sql: str, params: tuple) -> list[Message]:
         with self._lock:
@@ -136,9 +187,6 @@ class MemoryStore:
             (session_id, before_id if before_id is not None else 1 << 62, limit),
         )
         return rows[::-1]
-
-    def history(self, session_id: str, limit: int = 500) -> list[Message]:
-        return self.recent(session_id, limit)
 
     def in_range(
         self, start: datetime, end: datetime, limit: int = 40, exclude_id: int | None = None
@@ -182,3 +230,92 @@ class MemoryStore:
             (session_id, exclude_id or -1, limit),
         )
         return rows[::-1]
+
+
+def _msg(d: dict) -> Message:
+    return Message(d["id"], d["session_id"], d["role"], d["content"], d["created_at"], d.get("meta") or {})
+
+
+class SupabaseStore:
+    """Durable memory in hosted Postgres, reached over Supabase's REST API.
+
+    The schema and functions are in supabase/schema.sql. A turn costs two
+    HTTP calls: chronos_begin_turn (store the question, fetch all context)
+    and chronos_save (store the answer).
+    """
+
+    kind = "supabase"
+
+    def __init__(self, client: httpx.AsyncClient, url: str, key: str, token: str):
+        self._client = client
+        self._rpc = url.rstrip("/") + "/rest/v1/rpc/"
+        self._headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+        self._token = token
+
+    async def _call(self, fn: str, args: dict):
+        try:
+            resp = await self._client.post(
+                self._rpc + fn, headers=self._headers, json={"p_token": self._token, **args}, timeout=8
+            )
+        except httpx.HTTPError as exc:
+            raise StoreError(f"Memory store unreachable ({type(exc).__name__}).") from exc
+        if resp.status_code != 200:
+            try:
+                detail = resp.json().get("message", "")
+            except Exception:
+                detail = resp.text[:200]
+            raise StoreError(f"Memory store returned HTTP {resp.status_code}: {detail}")
+        return resp.json()
+
+    async def begin_turn(
+        self, session_id: str, content: str, created_at: datetime, window: int,
+        start: datetime | None = None, end: datetime | None = None,
+        terms: list[str] | None = None, log_limit: int = 0,
+    ) -> TurnContext:
+        data = await self._call(
+            "chronos_begin_turn",
+            {
+                "p_session_id": session_id,
+                "p_content": content,
+                "p_created_at": to_iso(created_at),
+                "p_window": window,
+                "p_start": to_iso(start) if start and end else None,
+                "p_end": to_iso(end) if start and end else None,
+                "p_terms": terms or None,
+                "p_log_limit": log_limit,
+            },
+        )
+        return TurnContext(
+            user=_msg(data["user"]),
+            recent=[_msg(d) for d in data["recent"]],
+            range_rows=[_msg(d) for d in data["range_rows"]],
+            range_total=data["range_total"],
+            hits=[_msg(d) for d in data["hits"]],
+            log=[_msg(d) for d in data["log"]],
+        )
+
+    async def save(self, session_id: str, role: str, content: str, meta: dict | None = None) -> Message:
+        data = await self._call(
+            "chronos_save",
+            {
+                "p_session_id": session_id,
+                "p_role": role,
+                "p_content": content,
+                "p_created_at": to_iso(utcnow()),
+                "p_meta": meta,
+            },
+        )
+        return _msg(data)
+
+    async def load_history(self, session_id: str, limit: int = 500) -> list[Message]:
+        return [_msg(d) for d in await self._call("chronos_history", {"p_session_id": session_id, "p_limit": limit})]
+
+    async def aclose(self) -> None:
+        pass
+
+
+def open_store(settings, client: httpx.AsyncClient):
+    """Supabase when it is configured, otherwise the local SQLite file."""
+    if settings.supabase_url and settings.supabase_key and settings.memory_token:
+        return SupabaseStore(client, settings.supabase_url, settings.supabase_key, settings.memory_token)
+    return MemoryStore(settings.db_path)

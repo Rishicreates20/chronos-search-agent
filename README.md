@@ -49,7 +49,14 @@ Every message shows its timestamp as `[HH:MM:SS UTC]` (hover for local time). Ea
 
 The repo deploys to Vercel as-is: `app/main.py` is detected as the FastAPI entrypoint and `vercel.json` raises the function timeout to 60 s. Set `LLM_API_KEY` and `TAVILY_API_KEY` as project environment variables.
 
-On Vercel the database lives in `/tmp`, which is temporary and separate for each function instance. Memory therefore lasts only as long as an instance stays warm, and it is lost on every redeploy. Run it locally for durable memory, or see the note in [design.md](design.md#5-trade-offs-and-future-work).
+Vercel functions have no durable disk, so a SQLite file there would be lost on every cold start. For durable memory the app can store messages in Supabase Postgres instead:
+
+1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql) in its SQL editor.
+2. Pick a long random string as the memory token and store its SHA-256:
+   `insert into chronos.settings (token_sha256) values (encode(sha256('<token>'::bytea), 'hex'));`
+3. Set `SUPABASE_URL`, `SUPABASE_KEY` (the project's publishable key) and `MEMORY_TOKEN` in Vercel.
+
+`GET /api/health` reports which backend is active as `"memory": "supabase"` or `"sqlite"`. Without those three variables the app falls back to SQLite, in `/tmp` on Vercel.
 
 ## Tests
 
@@ -74,10 +81,11 @@ The suite runs offline: the LLM and the search API are replaced by scripted resp
 │   ├── llm.py           Streaming chat-completions client (plain httpx)
 │   ├── search.py        web_search(query) via Tavily
 │   ├── grounding.py     Citation guard: strips URLs that were not retrieved
-│   ├── memory.py        SQLite WAL + FTS5 store
+│   ├── memory.py        Memory store: SQLite WAL + FTS5, or Supabase Postgres
 │   ├── temporal.py      Recall detection, time-range parsing, timestamp tags
 │   ├── config.py        Settings from the environment
 │   └── static/          Dark-mode chat UI (no build step)
+├── supabase/schema.sql  Postgres schema for durable memory on serverless hosts
 └── tests/
 ```
 

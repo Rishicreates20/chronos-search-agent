@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from .memory import Message, MemoryStore
+from .memory import Message, TurnContext
 
 # Phrases that suggest the user is asking about the conversation itself.
 # False positives are cheap (a few extra context lines), misses are not.
@@ -208,9 +208,7 @@ def _line(m: Message, tz: ZoneInfo, now: datetime, limit: int) -> str:
     return f"{tag(m.dt, tz, now)} {m.role.upper()}: {body}"
 
 
-def build_recall_block(
-    store: MemoryStore, recall: Recall, session_id: str, now: datetime, tz: ZoneInfo, exclude_id: int
-) -> str:
+def build_recall_block(recall: Recall, ctx: TurnContext, now: datetime, tz: ZoneInfo) -> str:
     """Render retrieved memory as a system-prompt section. Empty lookups are
     stated explicitly so the model reports "no record" instead of guessing."""
     if not recall.is_recall:
@@ -219,7 +217,7 @@ def build_recall_block(
     shown: set[int] = set()
 
     if recall.start and recall.end:
-        rows, total = store.in_range(recall.start, recall.end, limit=40, exclude_id=exclude_id)
+        rows, total = ctx.range_rows, ctx.range_total
         s, e = recall.start.astimezone(tz), recall.end.astimezone(tz)
         head = (
             f"Time range \"{recall.label}\" = {s:%Y-%m-%d %H:%M:%S} to {e:%Y-%m-%d %H:%M:%S} "
@@ -232,18 +230,16 @@ def build_recall_block(
         shown.update(m.id for m in rows)
 
     if recall.keywords:
-        hits = [m for m in store.search(recall.keywords, limit=8, exclude_id=exclude_id) if m.id not in shown]
+        hits = [m for m in ctx.hits if m.id not in shown]
         if hits:
-            hits.sort(key=lambda m: m.id)
             parts.append(f"Keyword matches for {', '.join(recall.keywords)} (any session):")
             parts += [_line(m, tz, now, 400 if m.role == "user" else 240) for m in hits]
         elif not shown:
             parts.append(f"Keyword matches for {', '.join(recall.keywords)}: none.")
 
-    log = store.session_log(session_id, limit=40, exclude_id=exclude_id)
-    if log:
+    if ctx.log:
         parts.append("Current session, every user question in order:")
-        parts += [_line(m, tz, now, 400) for m in log]
+        parts += [_line(m, tz, now, 400) for m in ctx.log]
     else:
         parts.append("Current session: no earlier user questions; this is the first message.")
     return "\n".join(parts)
