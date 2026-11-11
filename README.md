@@ -18,7 +18,7 @@ Requires Python 3.11+ and two API keys: an LLM key (Gemini by default, [get one 
 
 The first run creates a virtualenv, installs four dependencies, writes `.env` from `.env.example` and stops so you can paste the two keys in. Run it again and open <http://localhost:8000>.
 
-To use OpenAI instead, set `LLM_PROVIDER=openai` in `.env` and put an OpenAI key in `LLM_API_KEY` (model defaults to `gpt-4o-mini`).
+To use another provider, set `LLM_PROVIDER` in `.env` and put that provider's key in `LLM_API_KEY`: `groq` (defaults to `llama-3.3-70b-versatile`) or `openai` (defaults to `gpt-4o-mini`). `LLM_MODEL` overrides the model.
 
 <details>
 <summary>Without the script</summary>

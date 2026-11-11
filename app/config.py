@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Both providers are reached through the same OpenAI-compatible
+# All providers are reached through the same OpenAI-compatible
 # /chat/completions wire format, so switching is configuration only.
 PROVIDERS = {
     "gemini": {
@@ -15,6 +15,11 @@ PROVIDERS = {
         "model": "gemini-2.5-flash",
         # 2.5 Flash "thinks" by default, which costs TTFT. Turn it off.
         "reasoning_effort": "none",
+    },
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": "llama-3.3-70b-versatile",
+        "reasoning_effort": "",
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
