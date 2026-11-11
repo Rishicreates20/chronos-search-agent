@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Chronos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Chronos</span>
+      <span class="brand-sub">web-grounded · time-aware</span>
+    </div>
+    <div class="topbar-right">
+      <span class="mono chip" id="clock" title="Current time (UTC)">--:--:-- UTC</span>
+      <span class="mono chip" id="session" title="Session id"></span>
+      <button class="btn" id="new-session" type="button">New session</button>
+    </div>
+  </header>
+
+  <main id="scroll">
+    <div class="thread" id="thread">
+      <section class="empty" id="empty">
+        <h1>Ask anything. It remembers when.</h1>
+        <p>Answers that need fresh facts are searched and cited. Every message is timestamped, so you can ask what you asked, and when.</p>
+        <div class="suggestions" id="suggestions">
+          <button type="button">What are today's top technology headlines?</button>
+          <button type="button">What did I ask earlier?</button>
+          <button type="button">Explain SQLite WAL mode in two sentences</button>
+          <button type="button">Summarize today's questions</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="composer-wrap">
+    <form class="composer" id="composer">
+      <textarea id="input" rows="1" placeholder="Ask a question…" aria-label="Message" autofocus></textarea>
+      <button class="btn primary" id="send" type="submit">Send</button>
+    </form>
+    <div class="hint mono">Enter to send · Shift+Enter for a new line</div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
