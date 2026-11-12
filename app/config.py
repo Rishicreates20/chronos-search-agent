@@ -18,8 +18,9 @@ PROVIDERS = {
     },
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
-        "model": "llama-3.3-70b-versatile",
-        "reasoning_effort": "",
+        "model": "openai/gpt-oss-120b",
+        # A reasoning model: keep its thinking short for a fast first token.
+        "reasoning_effort": "low",
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
