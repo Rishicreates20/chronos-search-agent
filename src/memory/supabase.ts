@@ -2,7 +2,7 @@
 // disk. Schema and functions are in supabase/schema.sql. A turn costs two
 // HTTP calls: chronos_begin_turn (store the question, fetch all context)
 // and chronos_save (store the answer).
-import { StoreError, toIso, type MemoryStore, type Message, type Role, type TurnContext, type TurnRequest } from "./types.ts";
+import { StoreError, toIso, type MemoryStore, type Message, type Role, type TurnContext, type TurnRequest } from "./types.js";
 
 type Wire = { id: number; user_id: string; session_id: string; role: Role; content: string; created_at: string; meta: Record<string, unknown> | null };
 

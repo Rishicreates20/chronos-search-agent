@@ -3,7 +3,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { HIT_LIMIT, RANGE_LIMIT, toIso, type MemoryStore, type Message, type Role, type TurnContext, type TurnRequest } from "./types.ts";
+import { HIT_LIMIT, RANGE_LIMIT, toIso, type MemoryStore, type Message, type Role, type TurnContext, type TurnRequest } from "./types.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS messages (

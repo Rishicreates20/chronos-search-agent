@@ -2,9 +2,9 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { createApp } from "./app.ts";
-import { loadDotenv, settingsFromEnv } from "./config.ts";
-import { openStore } from "./memory/index.ts";
+import { createApp } from "./app.js";
+import { loadDotenv, settingsFromEnv } from "./config.js";
+import { openStore } from "./memory/index.js";
 
 loadDotenv();
 const settings = settingsFromEnv();

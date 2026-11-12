@@ -3,7 +3,7 @@
 //
 // Nothing here calls a model. "Last Tuesday" is resolved to exact UTC bounds
 // in code, in the user's timezone, before the LLM is involved.
-import type { Message, TurnContext } from "./memory/types.ts";
+import type { Message, TurnContext } from "./memory/types.js";
 
 const DAY = 86_400_000;
 

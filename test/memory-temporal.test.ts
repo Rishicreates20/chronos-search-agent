@@ -3,9 +3,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { SqliteStore } from "../src/memory/sqlite.ts";
-import { toIso } from "../src/memory/types.ts";
-import { analyze, buildRecallBlock, keywords, parseRange, tag } from "../src/temporal.ts";
+import { SqliteStore } from "../src/memory/sqlite.js";
+import { toIso } from "../src/memory/types.js";
+import { analyze, buildRecallBlock, keywords, parseRange, tag } from "../src/temporal.js";
 
 // Wednesday 11 November 2026, 15:36:02 UTC.
 const NOW = new Date("2026-11-11T15:36:02.000Z");

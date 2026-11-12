@@ -2,9 +2,9 @@
 // tests pin the requests it sends; the SQL side is supabase/schema.sql.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { openStore, StoreError } from "../src/memory/index.ts";
-import { SupabaseStore } from "../src/memory/supabase.ts";
-import { chat, makeApp, makeSettings, sseBody, textChunks } from "./helpers.ts";
+import { openStore, StoreError } from "../src/memory/index.js";
+import { SupabaseStore } from "../src/memory/supabase.js";
+import { chat, makeApp, makeSettings, sseBody, textChunks } from "./helpers.js";
 
 const NOW = new Date("2026-11-11T15:36:02.123Z");
 const row = (id: number, role: string, content: string, meta: unknown = null) => ({ id, user_id: "u1", session_id: "s1", role, content, created_at: "2026-11-11T15:36:02.123Z", meta });

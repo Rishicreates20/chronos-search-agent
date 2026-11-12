@@ -4,8 +4,8 @@
 // The dates are computed relative to today (the most recent Monday and
 // Tuesday, and 3 November). The answers are ILLUSTRATIVE demo text, not real
 // quotes; their only job is to give "then versus now" something to compare.
-import { loadDotenv, settingsFromEnv } from "../src/config.ts";
-import { SqliteStore } from "../src/memory/sqlite.ts";
+import { loadDotenv, settingsFromEnv } from "../src/config.js";
+import { SqliteStore } from "../src/memory/sqlite.js";
 
 loadDotenv();
 const settings = settingsFromEnv();

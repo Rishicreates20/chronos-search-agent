@@ -1,8 +1,8 @@
 // HTTP surface: POST /api/chat (SSE), GET /api/history, /api/health, /api/models.
 import { Hono } from "hono";
-import { runTurn, type AgentEvent } from "./agent.ts";
-import type { Settings } from "./config.ts";
-import { StoreError, toIso, type MemoryStore } from "./memory/types.ts";
+import { runTurn, type AgentEvent } from "./agent.js";
+import type { Settings } from "./config.js";
+import { StoreError, toIso, type MemoryStore } from "./memory/types.js";
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 

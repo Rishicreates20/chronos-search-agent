@@ -1,9 +1,9 @@
 // Test doubles: a scripted LLM and search API behind a fake fetch, so the
 // whole pipeline runs offline and deterministically.
-import { createApp } from "../src/app.ts";
-import { settingsFromEnv, type Settings } from "../src/config.ts";
-import { SqliteStore } from "../src/memory/sqlite.ts";
-import type { MemoryStore } from "../src/memory/types.ts";
+import { createApp } from "../src/app.js";
+import { settingsFromEnv, type Settings } from "../src/config.js";
+import { SqliteStore } from "../src/memory/sqlite.js";
+import type { MemoryStore } from "../src/memory/types.js";
 
 export function makeSettings(over: Partial<Settings> = {}): Settings {
   return {

@@ -5,9 +5,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { runTurn, type AgentEvent } from "../src/agent.ts";
-import { SqliteStore } from "../src/memory/sqlite.ts";
-import { chat, FakeBackend, makeApp, makeSettings, sseBody, textChunks, toolChunks } from "./helpers.ts";
+import { runTurn, type AgentEvent } from "../src/agent.js";
+import { SqliteStore } from "../src/memory/sqlite.js";
+import { chat, FakeBackend, makeApp, makeSettings, sseBody, textChunks, toolChunks } from "./helpers.js";
 
 const types = (events: any[]) => events.map((e) => e.type);
 

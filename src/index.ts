@@ -1,7 +1,7 @@
 // Entry point for serverless hosts (Vercel): export the app, do not listen.
-import { createApp } from "./app.ts";
-import { loadDotenv, settingsFromEnv } from "./config.ts";
-import { openStore, type MemoryStore } from "./memory/index.ts";
+import { createApp } from "./app.js";
+import { loadDotenv, settingsFromEnv } from "./config.js";
+import { openStore, type MemoryStore } from "./memory/index.js";
 
 loadDotenv();
 const settings = settingsFromEnv();

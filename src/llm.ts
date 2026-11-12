@@ -1,6 +1,6 @@
 // Direct, framework-free streaming client for an OpenAI-compatible
 // /chat/completions endpoint (Groq, OpenAI, or Gemini's compatibility API).
-import type { Settings } from "./config.ts";
+import type { Settings } from "./config.js";
 
 export class LLMError extends Error {}
 

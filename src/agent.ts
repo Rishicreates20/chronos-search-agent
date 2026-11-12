@@ -8,12 +8,12 @@
 //   done    - final timestamps and latency numbers
 //   error   - something failed; the message is user-readable
 import { randomUUID } from "node:crypto";
-import type { Settings } from "./config.ts";
-import { CitationGuard, extractUrls } from "./grounding.ts";
-import { LLMError, streamChat, type ChatMessage, type ToolCall } from "./llm.ts";
-import { StoreError, toIso, type MemoryStore, type Message, type TurnContext } from "./memory/types.ts";
-import { forLLM, TOOL_SPEC, webSearch, type SearchOutcome } from "./search.ts";
-import { analyze, buildRecallBlock, formatLocal, tag, validTz, weekdayName, type Recall } from "./temporal.ts";
+import type { Settings } from "./config.js";
+import { CitationGuard, extractUrls } from "./grounding.js";
+import { LLMError, streamChat, type ChatMessage, type ToolCall } from "./llm.js";
+import { StoreError, toIso, type MemoryStore, type Message, type TurnContext } from "./memory/types.js";
+import { forLLM, TOOL_SPEC, webSearch, type SearchOutcome } from "./search.js";
+import { analyze, buildRecallBlock, formatLocal, tag, validTz, weekdayName, type Recall } from "./temporal.js";
 
 // The only tool the model can ever see.
 export const TOOLS = [TOOL_SPEC];

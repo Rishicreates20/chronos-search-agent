@@ -1,5 +1,5 @@
 // The single tool: web_search, backed by Tavily.
-import type { Settings } from "./config.ts";
+import type { Settings } from "./config.js";
 
 export const TOOL_SPEC = {
   type: "function",

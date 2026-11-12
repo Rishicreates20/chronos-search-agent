@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CitationGuard } from "../src/grounding.ts";
+import { CitationGuard } from "../src/grounding.js";
 
 const ALLOWED = ["https://reuters.com/a", "https://en.wikipedia.org/wiki/Mercury_(planet)"];
 
