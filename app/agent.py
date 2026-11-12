@@ -40,7 +40,8 @@ WHEN TO SEARCH
 - One well-chosen search is normally enough. Search again only if the first results do not answer the question; you get at most two rounds.
 
 GROUNDING (after a search)
-- Base factual claims only on the search results. Cite each claim inline, right after it, as a markdown link with the result's exact URL and the publisher as link text: [Reuters](https://...).
+- Base factual claims only on the search results. Cite EACH claim inline, directly after it in the same sentence or bullet, as a markdown link with the result's exact URL and the publisher as link text: "NZ won by 87 runs [ESPN](https://...)". Every bullet or sentence that states a fact carries its own link, even when several facts share one source. Never gather sources into a "Source:" line at the end.
+- Answer in a few short sentences or bullets. Do not pad.
 - Only use URLs that appear verbatim in the search results. Never invent, guess, shorten or edit a URL. Unverified URLs are stripped before the user sees them.
 - If the results are empty or do not answer the question, say exactly: "I could not find verified information on this." You may add what the results do say. Never fill gaps with guesses.
 - If sources disagree, say so and cite each. Prefer the most recent source and mention its date.
@@ -89,7 +90,7 @@ def final_prompt(tool_results: list[str]) -> dict:
             "(Automated message from the web_search tool, not from the user.)\n\n"
             + "\n\n---\n\n".join(tool_results)
             + "\n\nNo further searches are available. Answer the user's question now, in plain text, "
-            "using only these results and citing them as instructed."
+            "using only these results, with a link after each claim as instructed."
         ),
     }
 
@@ -249,6 +250,7 @@ async def run_turn(
                 "ttft_ms": ttft_ms,
                 "total_ms": ms(),
                 "search_ms": search_ms,
+                "hydrate_ms": hydrate_ms,
                 "searched": bool(queries),
                 "removed_urls": len(guard.removed),
             }

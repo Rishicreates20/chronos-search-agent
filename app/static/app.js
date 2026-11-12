@@ -128,6 +128,11 @@
       b.title = "Time from request receipt to first streamed token (server-side)";
       view.badges.append(b);
     }
+    if (meta.hydrate_ms != null) {
+      const b = el("span", "badge", "memory " + secs(meta.hydrate_ms));
+      b.title = "Time to store the question and load memory, before the model is called";
+      view.badges.append(b);
+    }
     if (meta.search_ms) view.badges.append(el("span", "badge", "search " + secs(meta.search_ms)));
     if (meta.total_ms != null) view.badges.append(el("span", "badge", "total " + secs(meta.total_ms)));
     if (meta.removed_urls) {

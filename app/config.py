@@ -69,6 +69,7 @@ class Settings:
     supabase_url: str = ""
     supabase_key: str = ""
     memory_token: str = ""
+    search_depth: str = "fast"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -91,4 +92,5 @@ class Settings:
             supabase_url=env("SUPABASE_URL", "").strip(),
             supabase_key=env("SUPABASE_KEY", "").strip(),
             memory_token=env("MEMORY_TOKEN", "").strip(),
+            search_depth=env("SEARCH_DEPTH", "fast").strip() or "basic",
         )

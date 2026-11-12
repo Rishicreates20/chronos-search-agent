@@ -76,6 +76,8 @@ def test_search_flow_cites_real_urls_and_strips_fabricated_ones(backend, tmp_pat
     assert "bloomberg.com" not in text and "More at Bloomberg." in text
     assert events[-1]["searched"] is True and events[-1]["removed_urls"] == 1
     assert backend.search_requests[0]["query"] == "fed rate decision 2026"
+    assert backend.search_requests[0]["search_depth"] == "fast"
+    assert "Citation rule" in backend.llm_requests[1]["messages"][-1]["content"]
 
     # The second LLM call saw the tool result, snippets included.
     tool_msg = backend.llm_requests[1]["messages"][-1]
@@ -213,3 +215,25 @@ def test_rejected_tool_call_is_retried_once(tmp_path):
         events = chat(c, "hi")
     assert answer(events) == "Recovered." and not [e for e in events if e["type"] == "error"]
     assert n["calls"] == 2
+
+
+def test_fast_search_depth_with_fallback_to_basic(tmp_path):
+    from conftest import sse_body
+    depths = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        if request.url.host == "llm.test":
+            last = body["messages"][-1]
+            return httpx.Response(200, content=sse_body(text_chunks("ok") if last["role"] == "tool" else tool_chunks("q")))
+        depths.append(body["search_depth"])
+        if body["search_depth"] != "basic":
+            return httpx.Response(400, json={"detail": "invalid search_depth"})
+        return httpx.Response(200, json={"results": [{"title": "t", "url": "https://a.example/1", "content": "c"}]})
+
+    settings = make_settings(str(tmp_path / "t.db"), tavily_base_url="https://search2.test")
+    with TestClient(create_app(settings, transport=httpx.MockTransport(handler))) as c:
+        first = chat(c, "news?")
+        chat(c, "more news?")
+    assert depths == ["fast", "basic", "basic"]  # asked for fast, fell back, remembered
+    assert [e for e in first if e["type"] == "sources"] and not [e for e in first if e["type"] == "error"]
