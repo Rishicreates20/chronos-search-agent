@@ -37,6 +37,7 @@ WHEN TO SEARCH
 - Call web_search for anything live, recent or external: news, prices, scores, weather, releases, schedules, who currently holds a role, "latest" anything, or any specific fact you are not certain of.
 - Do NOT search for greetings, small talk, reasoning, writing or coding help, stable textbook knowledge, or questions about this conversation itself. Answer those directly.
 - Make queries specific. Add the current year or date for time-sensitive topics.
+- One well-chosen search is normally enough. Search again only if the first results do not answer the question; you get at most two rounds.
 
 GROUNDING (after a search)
 - Base factual claims only on the search results. Cite each claim inline, right after it, as a markdown link with the result's exact URL and the publisher as link text: [Reuters](https://...).
@@ -79,6 +80,18 @@ def build_messages(ctx: TurnContext, recall: temporal.Recall, user_text: str, no
         known_urls |= extract_urls(m.content)
     messages.append({"role": "user", "content": user_text})
     return messages, known_urls
+
+
+def final_prompt(tool_results: list[str]) -> dict:
+    return {
+        "role": "user",
+        "content": (
+            "(Automated message from the web_search tool, not from the user.)\n\n"
+            + "\n\n---\n\n".join(tool_results)
+            + "\n\nNo further searches are available. Answer the user's question now, in plain text, "
+            "using only these results and citing them as instructed."
+        ),
+    }
 
 
 async def run_turn(
@@ -128,23 +141,37 @@ async def run_turn(
     try:
         # Stages 3-5: the model either answers directly (one round trip) or
         # asks for a search, after which it answers from the results.
+        base_messages = list(messages)
+        tool_results: list[str] = []
         for round_no in range(settings.max_search_rounds + 1):
             last_round = round_no == settings.max_search_rounds
-            tool_calls: list[dict] = []
-            round_text: list[str] = []
-            async for kind, value in stream_chat(
-                client, settings, messages, tools=TOOLS, tool_choice="none" if last_round else None
-            ):
-                if kind == "text":
-                    round_text.append(value)
-                    safe = guard.feed(value)
-                    if safe:
-                        if ttft_ms is None:
-                            ttft_ms = ms()
-                        answer.append(safe)
-                        yield {"type": "token", "text": safe}
-                else:
-                    tool_calls = [c for c in value if c["name"] == "web_search"]
+            call_messages, call_tools = messages, TOOLS
+            if last_round:
+                # Search budget spent. Ask for the answer in a plain request
+                # with no tool declared, so the model cannot ask for another.
+                call_messages, call_tools = base_messages + [final_prompt(tool_results)], None
+            for attempt in range(2):
+                tool_calls: list[dict] = []
+                round_text: list[str] = []
+                try:
+                    async for kind, value in stream_chat(client, settings, call_messages, tools=call_tools):
+                        if kind == "text":
+                            round_text.append(value)
+                            safe = guard.feed(value)
+                            if safe:
+                                if ttft_ms is None:
+                                    ttft_ms = ms()
+                                answer.append(safe)
+                                yield {"type": "token", "text": safe}
+                        else:
+                            tool_calls = [c for c in value if c["name"] == "web_search"]
+                    break
+                except LLMError as exc:
+                    # Providers reject a malformed or disallowed tool call
+                    # outright. Nothing has been shown yet, so try once more.
+                    if attempt == 0 and not round_text and "tool" in str(exc).lower():
+                        continue
+                    raise
             if not tool_calls or last_round:
                 break
 
@@ -198,6 +225,7 @@ async def run_turn(
             messages.append(assistant)
             for c, out in zip(calls, outcomes):
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": out.for_llm()})
+                tool_results.append(out.for_llm())
 
         tail = guard.flush()
         if tail:

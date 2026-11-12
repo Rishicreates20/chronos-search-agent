@@ -115,7 +115,11 @@ def test_search_rounds_are_bounded(backend, tmp_path):
         events = chat(c, "dig deep")
     assert answer(events) == "final"
     assert len(backend.llm_requests) == 3
-    assert backend.llm_requests[2]["tool_choice"] == "none"
+    # The last request declares no tool and carries both result sets as text.
+    final = backend.llm_requests[2]
+    assert "tools" not in final and "tool_choice" not in final
+    assert all(m["role"] != "tool" and "tool_calls" not in m for m in final["messages"])
+    assert final["messages"][-1]["content"].count("https://a.example/1") == 2
 
 
 def test_history_is_injected_with_timestamp_tags(backend, tmp_path):
@@ -190,3 +194,22 @@ def test_rejected_reasoning_effort_is_dropped_and_retried(tmp_path):
         assert answer(chat(c, "hi")) == "hello"
         assert answer(chat(c, "hi again")) == "hello"
     assert seen == [True, False, False]
+
+
+def test_rejected_tool_call_is_retried_once(tmp_path):
+    """Some providers fail the whole request when the model emits a tool
+    call it should not have. That must not surface as an error."""
+    n = {"calls": 0}
+
+    def handler(request):
+        from conftest import sse_body
+        n["calls"] += 1
+        if n["calls"] == 1:
+            return httpx.Response(400, json={"error": {"message": "Tool choice is none, but model called a tool"}})
+        return httpx.Response(200, content=sse_body(text_chunks("Recovered.")))
+
+    settings = make_settings(str(tmp_path / "t.db"))
+    with TestClient(create_app(settings, transport=httpx.MockTransport(handler))) as c:
+        events = chat(c, "hi")
+    assert answer(events) == "Recovered." and not [e for e in events if e["type"] == "error"]
+    assert n["calls"] == 2

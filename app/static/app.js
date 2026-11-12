@@ -190,7 +190,10 @@
         answer += ev.text; schedule();
       }
       else if (ev.type === "error") view.msg.append(el("div", "error", ev.message));
-      else if (ev.type === "done") { setTime(view.ts, ev.created_at); addBadges(view, ev); }
+      else if (ev.type === "done") {
+        setTime(view.ts, ev.created_at); addBadges(view, ev);
+        if (lastQuery && !failed) setStatus(view, "searched", lastQuery);
+      }
     };
 
     try {
