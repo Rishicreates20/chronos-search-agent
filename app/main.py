@@ -95,6 +95,20 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             "memory": app.state.store.kind,
         }
 
+    @app.get("/api/models")
+    async def models():
+        """Model ids the configured key can use. For picking LLM_MODEL."""
+        try:
+            resp = await app.state.client.get(
+                f"{settings.llm_base_url}/models",
+                headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+                timeout=10,
+            )
+            ids = sorted(m.get("id", "") for m in resp.json().get("data", []))
+            return {"configured": settings.llm_model, "status": resp.status_code, "available": ids}
+        except Exception as exc:
+            return JSONResponse({"configured": settings.llm_model, "error": type(exc).__name__}, status_code=502)
+
     @app.get("/")
     async def index():
         return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
