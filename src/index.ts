@@ -1,5 +1,5 @@
 // Entry point for serverless hosts (Vercel): export the app, do not listen.
-import { createApp } from "./app.js";
+import { createApp } from "./http.js";
 import { loadDotenv, settingsFromEnv } from "./config.js";
 import { openStore, type MemoryStore } from "./memory/index.js";
 

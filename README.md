@@ -62,7 +62,7 @@ npm test
 ├── src/
 │   ├── dev.ts          Local server (npm run dev)
 │   ├── index.ts        Serverless entry point
-│   ├── app.ts          HTTP routes: POST /api/chat (SSE), GET /api/history
+│   ├── http.ts         HTTP routes: POST /api/chat (SSE), GET /api/history
 │   ├── agent.ts        The loop, the system prompt, the single tool
 │   ├── temporal.ts     Recall detection, date parsing, timestamp tags
 │   ├── grounding.ts    Citation guard
