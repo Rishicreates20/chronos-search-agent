@@ -1,6 +1,6 @@
 .env
-.venv/
+node_modules/
 data/
+.vercel/
+.venv/
 __pycache__/
-*.pyc
-.pytest_cache/

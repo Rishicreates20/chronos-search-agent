@@ -1,0 +1,24 @@
+{
+  "name": "chronos-search-agent",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A chat agent with one tool, web search, that remembers what you asked and when.",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "tsx watch --disable-warning=ExperimentalWarning src/dev.ts",
+    "start": "tsx --disable-warning=ExperimentalWarning src/dev.ts",
+    "seed": "tsx --disable-warning=ExperimentalWarning scripts/seed.ts",
+    "test": "tsx --disable-warning=ExperimentalWarning --test --test-reporter=dot test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

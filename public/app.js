@@ -18,6 +18,19 @@
     } catch { return newId(); }
   }
   let sessionId = loadSession();
+  // One id per browser, kept across sessions: recall ("what did I ask on
+  // Monday?") spans all of this user's sessions and nobody else's.
+  function loadUser() {
+    // ?user=demo adopts a seeded history (see scripts/seed.ts).
+    const fromUrl = new URLSearchParams(location.search).get("user");
+    if (fromUrl && /^[A-Za-z0-9_-]{1,64}$/.test(fromUrl)) return fromUrl;
+    try {
+      let id = localStorage.getItem("chronos.user");
+      if (!id) { id = newId(); localStorage.setItem("chronos.user", id); }
+      return id;
+    } catch { return sessionId; }
+  }
+  const userId = loadUser();
   const showSession = () => { $("session").textContent = "session " + sessionId.slice(0, 8); };
 
   // ---- formatting ---------------------------------------------------------
@@ -173,6 +186,7 @@
     toBottom();
 
     let answer = "", frame = 0, lastQuery = "", failed = false;
+    const queries = [];
     const paint = () => {
       frame = 0;
       const stick = nearBottom();
@@ -185,8 +199,10 @@
       if (ev.type === "meta") setTime(userView.ts, ev.created_at);
       else if (ev.type === "status") {
         if (ev.state === "search_failed") failed = true;
-        lastQuery = ev.query || lastQuery;
-        setStatus(view, ev.state, ev.query, ev.detail);
+        // Several searches can run in one step: show them all.
+        if (ev.state === "searching" && ev.query && !queries.includes(ev.query)) queries.push(ev.query);
+        lastQuery = queries.join(" · ") || lastQuery;
+        setStatus(view, ev.state, ev.state === "searching" ? lastQuery : ev.query, ev.detail);
         if (nearBottom()) toBottom();
       }
       else if (ev.type === "sources") setSources(view, ev.sources);
@@ -205,7 +221,7 @@
       const resp = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, message: text, timezone: TZ }),
+        body: JSON.stringify({ session_id: sessionId, user_id: userId, message: text, timezone: TZ }),
       });
       if (!resp.ok || !resp.body) throw new Error(`Request failed (HTTP ${resp.status})`);
       const reader = resp.body.getReader(), decoder = new TextDecoder();
@@ -234,7 +250,7 @@
 
   async function loadHistory() {
     try {
-      const resp = await fetch("/api/history?session_id=" + encodeURIComponent(sessionId));
+      const resp = await fetch("/api/history?session_id=" + encodeURIComponent(sessionId) + "&user_id=" + encodeURIComponent(userId));
       const { messages } = await resp.json();
       for (const m of messages) {
         const view = addMessage(m.role, m.content, m.created_at);
